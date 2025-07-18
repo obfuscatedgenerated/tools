@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CSS System Colors Demo</title>
+<style>
+  body {
+    font-family: sans-serif;
+    padding: 20px;
+    background: Canvas;
+    color: CanvasText;
+  }
+  h1 {
+    margin-bottom: 1em;
+  }
+  .color-swatch {
+    border: 1px solid gray;
+    margin-bottom: 1em;
+    padding: 1em;
+    border-radius: 6px;
+    max-width: 500px;
+  }
+  .swatch-name {
+    font-weight: bold;
+    margin-bottom: 0.5em;
+  }
+  .color-swatch span.value {
+    display: inline-block;
+    padding: 0.3em 0.6em;
+    border-radius: 3px;
+    font-family: monospace;
+  }
+
+  /* Use the system colors */
+  .AccentColor {
+    background-color: AccentColor;
+    color: AccentColorText;
+  }
+  .AccentColorText {
+    background-color: AccentColorText;
+    color: AccentColor;
+  }
+  .ActiveText {
+    color: ActiveText;
+  }
+  .ButtonBorder {
+    border: 3px solid ButtonBorder;
+    padding: 0.5em;
+  }
+  .ButtonFace {
+    background-color: ButtonFace;
+    color: ButtonText;
+  }
+  .ButtonText {
+    color: ButtonText;
+  }
+  .Canvas {
+    background-color: Canvas;
+    color: CanvasText;
+  }
+  .CanvasText {
+    color: CanvasText;
+  }
+  .Field {
+    background-color: Field;
+    color: FieldText;
+    padding: 0.5em;
+  }
+  .FieldText {
+    color: FieldText;
+  }
+  .GrayText {
+    color: GrayText;
+  }
+  .Highlight {
+    background-color: Highlight;
+    color: HighlightText;
+    padding: 0.5em;
+  }
+  .HighlightText {
+    color: HighlightText;
+  }
+  .LinkText a {
+    color: LinkText;
+    text-decoration: none;
+  }
+  .Mark {
+    background-color: Mark;
+    color: MarkText;
+    padding: 0.3em 0.5em;
+  }
+  .MarkText {
+    color: MarkText;
+  }
+  .SelectedItem {
+    background-color: SelectedItem;
+    color: SelectedItemText;
+    padding: 0.5em;
+  }
+  .SelectedItemText {
+    color: SelectedItemText;
+  }
+  .VisitedText a:visited {
+    color: VisitedText;
+  }
+</style>
+</head>
+<body>
+  <h1>CSS System Colors Demo</h1>
+
+  <div class="color-swatch AccentColor">
+    <div class="swatch-name">AccentColor</div>
+    <span class="value">AccentColor</span>
+  </div>
+
+  <div class="color-swatch AccentColorText">
+    <div class="swatch-name">AccentColorText</div>
+    <span class="value">AccentColorText</span>
+  </div>
+
+  <div class="color-swatch ActiveText">
+    <div class="swatch-name">ActiveText</div>
+    <span class="value">ActiveText</span>
+  </div>
+
+  <div class="color-swatch ButtonBorder">
+    <div class="swatch-name">ButtonBorder</div>
+    <span class="value">ButtonBorder</span>
+  </div>
+
+  <div class="color-swatch ButtonFace">
+    <div class="swatch-name">ButtonFace</div>
+    <span class="value">ButtonFace & ButtonText</span>
+  </div>
+
+  <div class="color-swatch ButtonText">
+    <div class="swatch-name">ButtonText</div>
+    <span class="value">ButtonText</span>
+  </div>
+
+  <div class="color-swatch Canvas">
+    <div class="swatch-name">Canvas</div>
+    <span class="value">Canvas & CanvasText</span>
+  </div>
+
+  <div class="color-swatch CanvasText">
+    <div class="swatch-name">CanvasText</div>
+    <span class="value">CanvasText</span>
+  </div>
+
+  <div class="color-swatch Field">
+    <div class="swatch-name">Field</div>
+    <span class="value">Field & FieldText</span>
+  </div>
+
+  <div class="color-swatch FieldText">
+    <div class="swatch-name">FieldText</div>
+    <span class="value">FieldText</span>
+  </div>
+
+  <div class="color-swatch GrayText">
+    <div class="swatch-name">GrayText</div>
+    <span class="value">GrayText</span>
+  </div>
+
+  <div class="color-swatch Highlight">
+    <div class="swatch-name">Highlight</div>
+    <span class="value">Highlight & HighlightText</span>
+  </div>
+
+  <div class="color-swatch HighlightText">
+    <div class="swatch-name">HighlightText</div>
+    <span class="value">HighlightText</span>
+  </div>
+
+  <div class="color-swatch LinkText">
+    <div class="swatch-name">LinkText</div>
+    <span class="value"><a href="#">LinkText (a link)</a></span>
+  </div>
+
+  <div class="color-swatch Mark">
+    <div class="swatch-name">Mark</div>
+    <span class="value">Mark & MarkText</span>
+  </div>
+
+  <div class="color-swatch MarkText">
+    <div class="swatch-name">MarkText</div>
+    <span class="value">MarkText</span>
+  </div>
+
+  <div class="color-swatch SelectedItem">
+    <div class="swatch-name">SelectedItem</div>
+    <span class="value">SelectedItem & SelectedItemText</span>
+  </div>
+
+  <div class="color-swatch SelectedItemText">
+    <div class="swatch-name">SelectedItemText</div>
+    <span class="value">SelectedItemText</span>
+  </div>
+
+  <div class="color-swatch VisitedText">
+    <div class="swatch-name">VisitedText</div>
+    <span class="value"><a href="#">VisitedText (visited link)</a></span>
+  </div>
+</body>
+</html>
