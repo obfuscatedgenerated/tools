@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nyquist Lab</title>
+    <style>
+    :root {
+        /* Define base spacing to keep things consistent */
+        --pad-sm: 0.5rem;
+        --pad-md: 1rem;
+        --pad-lg: 2rem;
+    }
+
+    body { 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        background: #0f0f0f; 
+        color: #eee; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        padding: var(--pad-md); 
+        margin: 0;
+        line-height: 1.6;
+    }
+
+    .container { 
+        background: #1a1a1a; 
+        padding: 2.5% 5%; /* Fluid padding */
+        border-radius: 1.25rem; 
+        box-shadow: 0 1.25rem 3.125rem rgba(0,0,0,0.8); 
+        max-width: 56.25rem; /* Equivalent to 900px at default font size */
+        width: 100%; 
+        border: 0.0625rem solid #333; 
+        box-sizing: border-box;
+        margin-top: 1rem;
+    }
+
+    canvas { 
+        background: #000; 
+        border-radius: 0.75rem; 
+        width: 100%; 
+        height: 40vh; /* Responsive height based on viewport */
+        min-height: 12.5rem;
+        margin-bottom: 1.5rem; 
+        border: 0.0625rem solid #222; 
+        display: block;
+    }
+
+    /* Stack controls on small screens, side-by-side on larger ones */
+    .controls { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); 
+        gap: 2rem; 
+        margin-bottom: 1.5rem; 
+    }
+
+    .control-group { display: flex; flex-direction: column; }
+
+    label { 
+        margin-bottom: 0.75rem; 
+        font-weight: bold; 
+        color: #777; 
+        text-transform: uppercase; 
+        font-size: 0.7rem; 
+        letter-spacing: 0.1rem; 
+    }
+
+    input[type="range"] { 
+        cursor: pointer; 
+        accent-color: #2196f3; 
+        height: 0.375rem; 
+        border-radius: 0.3125rem; 
+        background: #333; 
+        outline: none; 
+        width: 100%;
+    }
+
+    .mode-toggle { 
+        display: flex; 
+        flex-wrap: wrap; /* Wraps buttons on mobile */
+        align-items: center; 
+        justify-content: center; 
+        gap: 0.6rem; 
+        background: #252525; 
+        padding: 0.5rem; 
+        border-radius: 0.75rem; 
+        margin-bottom: 1.5rem; 
+    }
+
+    .toggle-btn { 
+        flex: 1 1 8rem; /* Allows buttons to grow and shrink, min 8rem */
+        background: transparent; 
+        border: none; 
+        color: #888; 
+        padding: 0.625rem; 
+        border-radius: 0.5rem; 
+        cursor: pointer; 
+        font-weight: bold; 
+        transition: all 0.3s; 
+        font-size: 0.85rem; 
+    }
+
+    .toggle-btn.active { background: #333; color: #fff; box-shadow: 0 0.125rem 0.625rem rgba(0,0,0,0.3); }
+    .toggle-btn.primary.active { background: #2196f3; color: #fff; }
+
+    .stats { 
+        display: flex; 
+        flex-wrap: wrap; 
+        justify-content: space-around; 
+        gap: 1rem;
+        background: #0a0a0a; 
+        padding: 1.25rem; 
+        border-radius: 0.75rem; 
+        font-family: 'JetBrains Mono', 'Courier New', monospace; 
+        border: 0.0625rem solid #222; 
+        font-size: 0.9rem; 
+    }
+
+    .status-good { color: #4caf50; }
+    .status-bad { color: #ff5252; font-weight: bold; }
+
+    h1 { margin: 0 0 0.5rem 0; font-size: calc(1.2rem + 1vw); letter-spacing: -0.03rem; }
+    h2 { font-size: calc(1rem + 0.8vw); margin-top: 2rem; }
+    
+    p { 
+        max-width: 75rem; 
+        width: 100%; 
+        font-size: 1rem;
+    }
+
+    hr { 
+        margin-top: 3.5rem; 
+        margin-bottom: 1.5rem; 
+        width: 90%; 
+        border-color: #111; 
+    }
+</style>
+</head>
+<body>
+
+<h1>Nyquist Lab</h1>
+
+<div class="container">
+    <div class="mode-toggle">
+        <button id="humanBtn" class="toggle-btn active" title="View the source &quot;true&quot; wave">1. Analog Source</button>
+        <button id="computerBtn" class="toggle-btn" title="View the sample points the computer sees, joined up">2. Digital Samples</button>
+        <button id="filterBtn" class="toggle-btn" title="View the smoothed wave output by the computer">3. Reconstruction Filter</button>
+    </div>
+
+    <canvas id="plot"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <label id="freqLabel">Signal Frequency</label>
+            <input type="range" id="freqInput" min="0.5" max="25" step="0.1" value="3.2">
+        </div>
+        <div class="control-group">
+            <label id="sampleLabel">Sampling Rate</label>
+            <input type="range" id="sampleInput" min="2" max="50" step="1" value="8">
+        </div>
+    </div>
+
+    <div class="stats">
+        <div>Limit: <span id="nyquistVal">4.0</span>Hz</div>
+        <div id="statusContainer"><span id="status">ACCURATE</span></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('plot');
+    const ctx = canvas.getContext('2d');
+    const freqInput = document.getElementById('freqInput');
+    const sampleInput = document.getElementById('sampleInput');
+    const freqLabel = document.getElementById('freqLabel');
+    const sampleLabel = document.getElementById('sampleLabel');
+    const nyquistVal = document.getElementById('nyquistVal');
+    const statusText = document.getElementById('status');
+    const humanBtn = document.getElementById('humanBtn');
+    const computerBtn = document.getElementById('computerBtn');
+    const filterBtn = document.getElementById('filterBtn');
+
+    let currentMode = 'human'; // 'human', 'digital', 'filtered'
+
+    humanBtn.onclick = () => setMode('human');
+    computerBtn.onclick = () => setMode('digital');
+    filterBtn.onclick = () => setMode('filtered');
+
+    function setMode(mode) {
+        currentMode = mode;
+        humanBtn.className = mode === 'human' ? 'toggle-btn active' : 'toggle-btn';
+        computerBtn.className = mode === 'digital' ? 'toggle-btn active' : 'toggle-btn';
+        filterBtn.className = mode === 'filtered' ? 'toggle-btn active' : 'toggle-btn';
+    }
+
+    function draw() {
+        const freq = parseFloat(freqInput.value);
+        const sampleRate = parseFloat(sampleInput.value);
+        const nyquist = sampleRate / 2;
+
+        freqLabel.innerText = `Signal Frequency: ${freq.toFixed(1)} Hz`;
+        sampleLabel.innerText = `Sampling Rate: ${sampleRate.toFixed(0)} Hz`;
+        nyquistVal.innerText = nyquist.toFixed(1);
+
+        // Calculate the alias frequency: |f - n*fs|
+        // This finds which multiple of the sample rate the signal is "folding" around
+        const n = Math.round(freq / sampleRate);
+        const aliasFreq = Math.abs(freq - n * sampleRate);
+        
+        if (freq > nyquist) {
+            statusText.innerText = `ALIASED (${aliasFreq.toFixed(1)} Hz)`;
+            statusText.className = "status-bad";
+        } else {
+            statusText.innerText = "ACCURATE";
+            statusText.className = "status-good";
+        }
+
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        const midY = canvas.height / 2;
+        const width = canvas.width;
+        const scaleX = width / 2; 
+        const amplitude = canvas.height * 0.35;
+
+        ctx.clearRect(0, 0, width, canvas.height);
+        
+        // Background Grid Lines
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1;
+        for(let i=0; i<10; i++) {
+            let x = (width/10) * i;
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+
+        // 1. Draw Original Wave (Only in Human Mode)
+        if (currentMode === 'human') {
+            ctx.strokeStyle = '#2196f3';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let x = 0; x < width; x++) {
+                const y = midY + Math.sin(2 * Math.PI * freq * (x / scaleX)) * amplitude;
+                x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // 2. Samples (Used for Digital and Filtered modes)
+        const samples = [];
+        const dt = 1 / sampleRate;
+        for (let t = 0; t <= 2.1; t += dt) {
+            samples.push({x: t * scaleX, y: midY + Math.sin(2 * Math.PI * freq * t) * amplitude});
+        }
+
+        // 3. Draw Path
+        if (currentMode === 'digital') {
+            // Raw Jagged Reconstruction
+            ctx.strokeStyle = '#4caf50';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            samples.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
+            ctx.stroke();
+        } else if (currentMode === 'filtered') {
+            // Smoothed Reconstruction (The Alias)
+            const n = Math.round(freq / sampleRate);
+            const aliasFreq = Math.abs(freq - n * sampleRate);
+            const isFlipped = (freq % (2 * sampleRate)) > sampleRate;
+            ctx.strokeStyle = '#4caf50';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let x = 0; x < width; x++) {
+                let val = Math.sin(2 * Math.PI * aliasFreq * (x / scaleX));
+                const y = midY + (isFlipped ? -val : val) * amplitude;
+                x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        samples.forEach(s => {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fill();
+        });
+
+        requestAnimationFrame(draw);
+    }
+    draw();
+</script>
+
+<hr />
+
+<h2>What is aliasing?</h2>
+<p>Imagine you're looking at a fast-moving ceiling fan through a strobe light. If the light flashes fast enough, you see the blades exactly where they are. But if the light flashes too slowly, your brain gets tricked into thinking the fan is spinning backward or barely moving at all. In digital audio and video, Aliasing is that exact same trick. Because a computer only "looks" at a signal at specific moments (the samples), it has to guess what happened in between. If the signal moves too fast for the sampling rate, the computer literally loses track of the "truth" and creates a fake, lower-frequency "alias" instead.</p>
+
+<h2>Why do the samples look jagged?</h2>
+<p>When you see jagged joined up sample points in this tool, you are seeing the raw "connect-the-dots" version of a digital signal. Those sharp corners aren't just ugly to look at. They represent high-frequency "buzz" or noise that wasn't in the original sound. This is why your phone, computer, and CD player use a Reconstruction Filter. The filter acts like digital sandpaper, rubbing away those sharp corners by blocking out the high frequencies that cause them, in order to make the wave smooth again. However, there is a catch: while the filter can remove the "buzz," it cannot fix a "lie." If the signal has already aliased (folded down into a lower frequency), the filter will simply give you a perfectly smooth version of the wrong note.</p>
+
+<h2>What is the Nyquist-Shannon sampling theorem?</h2>
+<p>Harry Nyquist discovered that to avoid aliasing, you must sample at a rate that is at least twice the highest frequency you want to capture. This is the Nyquist Limit. It’s the reason why CDs are sampled at 44,100 times per second, it’s just over double the highest pitch a human ear can hear. By staying under this limit, we ensure that the computer always has enough "dots" to reconstruct the original wave accurately. Once you cross that limit, the information is mathematically destroyed, and no amount of filtering or processing can ever bring the original "true" analog wave back.</p>
+</body>
+</html>
