@@ -289,12 +289,13 @@
 
 <h2>What is aliasing?</h2>
 <p>Imagine you're looking at a fast-moving ceiling fan through a strobe light. If the light flashes fast enough, you see the blades exactly where they are. But if the light flashes too slowly, your brain gets tricked into thinking the fan is spinning backward or barely moving at all. In digital audio and video, Aliasing is that exact same trick. Because a computer only "looks" at a signal at specific moments (the samples), it has to guess what happened in between. If the signal moves too fast for the sampling rate, the computer literally loses track of the "truth" and creates a fake, lower-frequency "alias" instead.</p>
-
-<h2>Why do the samples look jagged?</h2>
-<p>When you see jagged joined up sample points in this tool, you are seeing the raw "connect-the-dots" version of a digital signal. Those sharp corners aren't just ugly to look at. They represent high-frequency "buzz" or noise that wasn't in the original sound. This is why your phone, computer, and CD player use a Reconstruction Filter. The filter acts like digital sandpaper, rubbing away those sharp corners by blocking out the high frequencies that cause them. In doing so, it forces the electrical signal to follow a smooth, natural curve that "swings" through the points, actually restoring the original peaks of the wave that the samples might have missed. However, there is a catch: while the filter can remove the "buzz," it cannot fix a "lie." If the signal has already aliased (folded down into a lower frequency), the filter will simply give you a perfectly smooth version of the wrong note.</p>
-
+    
 <h2>What is the Nyquist-Shannon sampling theorem?</h2>
 <p>Harry Nyquist discovered that to avoid aliasing, you must sample at a rate that is at least twice the highest frequency you want to capture. This is the Nyquist Limit. It’s the reason why CDs are sampled at 44,100 times per second, it’s just over double the highest pitch a human ear can hear. By staying under this limit, we ensure that the computer always has enough "dots" to reconstruct the original wave accurately. Once you cross that limit, the information is mathematically destroyed, and no amount of filtering or processing can ever bring the original "true" analog wave back.</p>
+    
+<h2>Why do the samples look jagged?</h2>
+<p>When you see jagged joined up sample points in this tool, you are seeing the raw "connect-the-dots" version of a digital signal. Those sharp corners aren't just ugly to look at. They represent high-frequency "buzz" or noise that wasn't in the original sound. This is why your phone, computer, and CD player use a Reconstruction Filter. The filter acts like digital sandpaper, rubbing away those sharp corners by blocking out the high frequencies that cause them (i.e. any frequency above what should be the maximum possible under Nyquist's Limit). In doing so, it forces the electrical signal to follow a smooth, natural curve that "swings" through the points, actually restoring the original peaks of the wave that the samples might have missed. However, there is a catch: while the filter can remove the "buzz," it cannot fix a "lie." If the signal has already aliased (folded down into a lower frequency), the filter will simply give you a perfectly smooth version of the wrong note.</p>
 </body>
 
 </html>
+
