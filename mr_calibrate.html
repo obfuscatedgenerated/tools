@@ -5,9 +5,9 @@
     <title>WebXR MR Camera Calibrator</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
-        #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 8px; width: 340px; max-height: 95vh; overflow-y: auto;}
+        #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 8px; width: 360px; max-height: 95vh; overflow-y: auto;}
         #video-container { position: absolute; top: 10px; right: 10px; z-index: 10; border: 2px solid #444; border-radius: 8px; background: #000; box-shadow: 0 0 10px rgba(0,255,0,0.2);}
-        canvas, video { display: block; width:20vw }
+        canvas, video { display: block; width: 20rem } /* Visually small, but mathematically 4K/1080p */
         video { display: none; } 
         input[type="number"] { width: 60px; background: #333; color: #fff; border: 1px solid #666; padding: 4px; border-radius: 4px; float: right;}
         label { display: block; margin-bottom: 10px; line-height: 24px; border-bottom: 1px solid #333; padding-bottom: 5px;}
@@ -18,8 +18,12 @@
         textarea { background: #222; color: #0f0; border: 1px solid #444; font-family: monospace; padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box; resize: none; font-size: 12px;}
         .note { font-size: 11px; color: #aaa; margin-top: 2px; margin-bottom: 5px; display: block; line-height: 1.4;}
         hr { border: 0; border-top: 1px solid #444; margin: 15px 0;}
-        .toggles { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 10px; }
-        .toggles label { border: none; padding: 0; margin: 0; display: inline-flex; align-items: center; }
+
+        /* Nudge Panel Styles */
+        .nudge-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; text-align: center; margin-top: 10px;}
+        .nudge-cell { background: #222; padding: 5px; border-radius: 4px; border: 1px solid #444; font-size: 11px; color: #bbb;}
+        .nudge-cell button { width: 40%; display: inline-block; padding: 4px; margin: 2px 0; font-size: 14px; background: #444; margin-top: 4px;}
+        .nudge-cell button:hover { background: #666;}
 
         /* Print Layout */
         #print-page { display: none; }
@@ -28,6 +32,7 @@
             #print-page, #print-page * { visibility: visible; }
             #print-page { display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
             #print-target { display: flex; justify-content: center; align-items: center; height: 100%; }
+            canvas { width: auto }
         }
     </style>
     
@@ -40,34 +45,34 @@
 
 <div id="ui-container">
     <h2 style="margin-top:0; color: #66f;">MR Camera Calibrator</h2>
-    
-    <h3>1. Prepare Marker</h3>
-    <label>Size (mm) <input id="print-size-mm" type="number" value="50" min="10" max="200"></label>
+
+    <h3 style="margin-top:0;">1. Prepare Marker</h3>
+    <label>Print Size (mm) <input id="print-size-mm" type="number" value="50" min="10" max="200"></label>
     <button class="btn-print" onclick="window.print()">Print Marker</button>
-    <span class="note">Note: Turn off "Fit to Page" in print dialog.</span>
-    
-    <hr>
+    <span class="note">Turn off "Fit to Page" when printing.</span>
     
     <h3>2. Calibrate</h3>
     <label>Size (mm) <input id="ui-size" type="number" value="50"></label>
     <label>Z Offset (m) <input id="ui-zoffset" type="number" step="0.01" value="-0.10"></label>
     <label>FOV (deg) <input id="ui-fov" type="number" value="60"></label>
     
-    <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
-        <span style="font-size: 12px; color:#aaa; margin-bottom: 5px; display:block;">If camera is behind you, click these to fix:</span>
-        <div class="toggles">
-            <label><input type="checkbox" id="flip-x"> Flip X</label>
-            <label><input type="checkbox" id="flip-y"> Flip Y</label>
-            <label><input type="checkbox" id="flip-z"> Flip Z</label>
-        </div>
-    </div>
-    
-    <button id="btn-cam">Start Webcam (Lock Focus)</button>
+    <button id="btn-cam">Start Webcam</button>
     <div id="vr-container"></div>
     <button class="btn-success" id="btn-capture">Capture (Spacebar)</button>
+
+    <h3 style="margin-top: 15px; margin-bottom: 5px;">3. Fine-Tune Nudge</h3>
+    <span class="note">Pos: 1cm | Rot: 1°</span>
+    <div class="nudge-grid">
+        <div class="nudge-cell">Left / Right (X)<br><button onclick="nudge('x', -0.01)">-</button> <button onclick="nudge('x', 0.01)">+</button></div>
+        <div class="nudge-cell">Down / Up (Y)<br><button onclick="nudge('y', -0.01)">-</button> <button onclick="nudge('y', 0.01)">+</button></div>
+        <div class="nudge-cell">Back / Fwd (Z)<br><button onclick="nudge('z', 0.01)">-</button> <button onclick="nudge('z', -0.01)">+</button></div>
+        <div class="nudge-cell">Pitch (RX)<br><button onclick="nudge('rx', -1)">-</button> <button onclick="nudge('rx', 1)">+</button></div>
+        <div class="nudge-cell">Yaw (RY)<br><button onclick="nudge('ry', -1)">-</button> <button onclick="nudge('ry', 1)">+</button></div>
+        <div class="nudge-cell">Roll (RZ)<br><button onclick="nudge('rz', -1)">-</button> <button onclick="nudge('rz', 1)">+</button></div>
+    </div>
     
-    <h3 style="margin-top: 15px;">Output (externalcamera.cfg)</h3>
-    <textarea id="output-cfg" rows="10" readonly></textarea>
+    <h3 style="margin-top: 15px;">4. Output</h3>
+    <textarea id="output-cfg" rows="9" readonly></textarea>
 </div>
 
 <div id="video-container">
@@ -75,9 +80,9 @@
     <canvas id="canvas" width="1920" height="1080"></canvas>
 </div>
 
-<div id="print-page">
-    <div id="print-target"><canvas id="print-canvas"></canvas></div>
-</div>
+<div id="print-page"><div id="print-target">
+    <canvas id="print-canvas"></canvas>
+</div></div>
 
 <script type="importmap">
 {
@@ -104,21 +109,11 @@ renderer.xr.setReferenceSpaceType('local-floor');
 document.body.appendChild(renderer.domElement);
 document.getElementById('vr-container').appendChild(VRButton.createButton(renderer));
 
-// --- THE NEW 3D OBJECT HIERARCHY ---
-const headsetNode = new THREE.Group(); 
-scene.add(headsetNode); // Node 1: Matches Headset
-
-const markerNode = new THREE.Group();
-headsetNode.add(markerNode); // Node 2: Attached to Headset (handles Z-offset and Flips)
-
-const cvSpace = new THREE.Group();
-cvSpace.rotation.x = Math.PI; // Converts OpenCV (Y-down, Z-forward) to WebGL (Y-up, Z-back)
-markerNode.add(cvSpace); // Node 3: The Math Converter
-
 const camGroup = new THREE.Group();
-cvSpace.add(camGroup); // Node 4: The final calculated camera position
+camGroup.matrixAutoUpdate = true; // Required so the Nudge buttons work
+scene.add(camGroup);
 
-// Visuals for the Camera
+// Camera Visuals
 camGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true })));
 camGroup.add(new THREE.AxesHelper(0.5));
 
@@ -134,7 +129,7 @@ const videoElement = document.getElementById('video');
 const videoTex = new THREE.VideoTexture(videoElement);
 videoTex.colorSpace = THREE.SRGBColorSpace;
 const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.36), new THREE.MeshBasicMaterial({ map: videoTex, side: THREE.DoubleSide }));
-screenMesh.position.set(0, 1.5, -1.5); // Floating in middle of room
+screenMesh.position.set(0, 1.5, -1.5);
 scene.add(screenMesh);
 
 // --- Print System ---
@@ -146,42 +141,35 @@ function generateMarker() {
     const cellSize = pixelSize / 4;
     const totalSize = pixelSize + (cellSize * 2);
 
-    pCanvas.width = totalSize;
-    pCanvas.height = totalSize;
-    pCtx.fillStyle = "black";
-    pCtx.fillRect(0, 0, totalSize, totalSize);
+    pCanvas.width = totalSize; pCanvas.height = totalSize;
+    pCtx.fillStyle = "black"; pCtx.fillRect(0, 0, totalSize, totalSize);
     
     const grid = [[1,0,1,1],[0,1,0,1],[0,0,1,1],[0,0,1,0]];
     pCtx.fillStyle = "white";
     for(let r=0; r<4; r++) {
         for(let c=0; c<4; c++) {
-            if(grid[r][c]) {
-                const x = Math.floor(cellSize + c * cellSize);
-                const y = Math.floor(cellSize + r * cellSize);
-                pCtx.fillRect(x, y, cellSize, cellSize);
-            }
+            if(grid[r][c]) pCtx.fillRect(Math.floor(cellSize + c * cellSize), Math.floor(cellSize + r * cellSize), cellSize, cellSize);
         }
     }
 }
 document.getElementById('print-size-mm').onchange = generateMarker;
 generateMarker();
 
-// --- Camera Logic ---
+// --- Camera & Video Logic ---
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
 let detector = new window.AR.Detector();
 let posit = null;
-let latestMarkers = []; // NEW: Store the current frame's markers for the capture button
+let latestMarkers = [];
+let hasCaptured = false; // Prevents nudging before a capture
 
 document.getElementById('btn-cam').addEventListener('click', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1920, height: 1080 } });
         const track = stream.getVideoTracks()[0];
-        if (track.getCapabilities().focusMode) {
-            await track.applyConstraints({ advanced: [{ focusMode: "manual", exposureMode: "manual" }] });
-        }
+        if (track.getCapabilities().focusMode) await track.applyConstraints({ advanced: [{ focusMode: "manual", exposureMode: "manual" }] });
         video.srcObject = stream;
         requestAnimationFrame(processVideo);
     } catch(e) { alert("Camera Error: " + e); }
@@ -189,84 +177,85 @@ document.getElementById('btn-cam').addEventListener('click', async () => {
 
 function processVideo() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Save the detected markers globally so the capture button can use them
     latestMarkers = detector.detect(ctx.getImageData(0, 0, canvas.width, canvas.height));
     
-    // ONLY do 2D drawing here so you have visual feedback on the monitor
     if (latestMarkers.length > 0) {
         ctx.lineWidth = 3;
         for (let i = 0; i < latestMarkers.length; i++) {
             let corners = latestMarkers[i].corners;
-            ctx.strokeStyle = "lime";
-            ctx.beginPath();
+            ctx.strokeStyle = "lime"; ctx.beginPath();
             ctx.moveTo(corners[0].x, corners[0].y); ctx.lineTo(corners[1].x, corners[1].y);
             ctx.lineTo(corners[2].x, corners[2].y); ctx.lineTo(corners[3].x, corners[3].y);
             ctx.closePath(); ctx.stroke();
-            ctx.fillStyle = "red";
-            ctx.font = "bold 16px monospace";
-            ctx.fillText("ID: " + latestMarkers[i].id, corners[0].x, corners[0].y - 8);
         }
     }
     requestAnimationFrame(processVideo);
 }
 
-// --- Export & 3D Math ---
+// --- Math & Output ---
 function capture() {
-    // Safety Checks
-    if (!renderer.xr.isPresenting) return alert("❌ Calibration Blocked: Put on the headset and enter VR mode!");
-    if (latestMarkers.length === 0) return alert("❌ Marker not found right now! Make sure you are facing the camera.");
+    if (!renderer.xr.isPresenting) return alert("❌ Enter VR mode first!");
+    if (latestMarkers.length === 0) return alert("❌ Marker not found right now!");
     
-    // 1. Setup OpenCV Math
     let size = parseFloat(document.getElementById('ui-size').value);
     let fov = parseFloat(document.getElementById('ui-fov').value) * Math.PI / 180;
     let focal = (canvas.width / 2) / Math.tan(fov / 2);
     
     if(!posit) posit = new POS.Posit(size, focal);
-    
     let corners = latestMarkers[0].corners.map(c => ({ x: c.x - canvas.width/2, y: canvas.height/2 - c.y }));
     let pose = posit.pose(corners);
     
-    // 2. Lock the root node to your Headset's EXACT current position
-    let hMatrix = renderer.xr.getCamera(camera).matrixWorld;
-    hMatrix.decompose(headsetNode.position, headsetNode.quaternion, headsetNode.scale);
+    let virtualMarker = new THREE.Object3D();
+    virtualMarker.position.set(pose.bestTranslation[0] / 1000, -pose.bestTranslation[1] / 1000, -pose.bestTranslation[2] / 1000);
+    virtualMarker.rotation.set(-Math.asin(-pose.bestRotation[1][2]), -Math.atan2(pose.bestRotation[0][2], pose.bestRotation[2][2]), Math.atan2(pose.bestRotation[1][0], pose.bestRotation[1][1]));
+    virtualMarker.updateMatrix();
 
-    // 3. Apply Z-Offset and UI Axis Flips to the Marker Node
-    markerNode.position.z = parseFloat(document.getElementById('ui-zoffset').value);
-    markerNode.rotation.set(
-        document.getElementById('flip-x').checked ? Math.PI : 0,
-        document.getElementById('flip-y').checked ? Math.PI : 0,
-        document.getElementById('flip-z').checked ? Math.PI : 0
-    );
+    let headsetMatrix = renderer.xr.getCamera(camera).matrixWorld.clone();
+    let offsetMatrix = new THREE.Matrix4().makeTranslation(0, 0, parseFloat(document.getElementById('ui-zoffset').value));
+    let alignAxes = new THREE.Matrix4().makeRotationY(Math.PI);
+    let trueMarkerMatrix = headsetMatrix.multiply(offsetMatrix).multiply(alignAxes);
 
-    // 4. Apply the raw Posit Matrix to the Camera
-    let positMatrix = new THREE.Matrix4().set(
-        pose.bestRotation[0][0], pose.bestRotation[0][1], pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
-        pose.bestRotation[1][0], pose.bestRotation[1][1], pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
-        pose.bestRotation[2][0], pose.bestRotation[2][1], pose.bestRotation[2][2], pose.bestTranslation[2]/1000,
-        0,0,0,1
-    );
+    let camWorldMatrix = trueMarkerMatrix.multiply(virtualMarker.matrix.clone().invert());
     
-    // Posit calculates Marker -> Camera. We invert it to position Camera -> Marker.
-    positMatrix.invert().decompose(camGroup.position, camGroup.quaternion, camGroup.scale);
-
-    // Force Three.js to calculate the final World Matrices instantly
-    scene.updateMatrixWorld(true);
-
-    // 5. Update the Laser Line so you can see where it locked in
-    let headPos = new THREE.Vector3().setFromMatrixPosition(headsetNode.matrixWorld);
-    let camPos = new THREE.Vector3().setFromMatrixPosition(camGroup.matrixWorld);
-    laserLine.geometry.setFromPoints([headPos, camPos]);
+    // Instead of freezing the matrix, decompose it so the Nudge buttons can edit it
+    camWorldMatrix.decompose(camGroup.position, camGroup.quaternion, camGroup.scale);
     
-    // 6. Generate the Output text
+    hasCaptured = true;
+    updateVisualsAndOutput();
+}
+
+// --- Nudge Logic (Global so the HTML buttons can call it) ---
+window.nudge = function(axis, amount) {
+    if (!hasCaptured) return alert("You must capture a position first before you can nudge it.");
+    
+    if (axis === 'x') camGroup.position.x += amount;
+    if (axis === 'y') camGroup.position.y += amount;
+    if (axis === 'z') camGroup.position.z += amount;
+    
+    if (axis === 'rx') camGroup.rotation.x += amount * (Math.PI / 180);
+    if (axis === 'ry') camGroup.rotation.y += amount * (Math.PI / 180);
+    if (axis === 'rz') camGroup.rotation.z += amount * (Math.PI / 180);
+
+    updateVisualsAndOutput();
+}
+
+// Generates the cfg text and updates the laser
+function updateVisualsAndOutput() {
+    camGroup.updateMatrixWorld(true);
+    
+    if (renderer.xr.isPresenting) {
+        let headPos = new THREE.Vector3().setFromMatrixPosition(renderer.xr.getCamera(camera).matrixWorld);
+        let camPos = new THREE.Vector3().setFromMatrixPosition(camGroup.matrixWorld);
+        laserLine.geometry.setFromPoints([headPos, camPos]);
+    }
+    
     let pos = new THREE.Vector3().setFromMatrixPosition(camGroup.matrixWorld);
     let rot = new THREE.Euler().setFromRotationMatrix(camGroup.matrixWorld, 'XYZ');
     
-    document.getElementById('output-cfg').value = `x=${pos.x.toFixed(6)}\ny=${pos.y.toFixed(6)}\nz=${pos.z.toFixed(6)}\n` +
+    document.getElementById('output-cfg').value = 
+        `x=${pos.x.toFixed(6)}\ny=${pos.y.toFixed(6)}\nz=${pos.z.toFixed(6)}\n` +
         `rx=${(rot.x * 180/Math.PI).toFixed(6)}\nry=${(rot.y * 180/Math.PI).toFixed(6)}\nrz=${(rot.z * 180/Math.PI).toFixed(6)}\n` +
         `fov=${document.getElementById('ui-fov').value}\nnear=0.1\nfar=100\nsceneResolutionScale=0.5`;
-
-    console.log("Calibration Locked!");
 }
 
 document.getElementById('btn-capture').onclick = capture;
