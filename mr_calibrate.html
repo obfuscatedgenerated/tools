@@ -29,11 +29,10 @@
         }
     </style>
     
-    <!-- Dependencies -->
-    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/cv.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/aruco.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/svd.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/posit1.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2/src/cv.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2/src/aruco.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2/src/svd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2/src/posit1.js"></script>
 </head>
 <body>
 
@@ -52,7 +51,7 @@
     <label>Z Offset (m) <input id="ui-zoffset" type="number" step="0.01" value="-0.10"></label>
     <label>FOV (deg) <input id="ui-fov" type="number" value="60"></label>
     
-    <button id="btn-cam">Start Webcam (Lock Focus)</button>
+    <button id="btn-cam">Start Webcam</button>
     <div id="vr-container"></div>
     <button class="btn-success" id="btn-capture">Capture (Spacebar)</button>
     
@@ -65,7 +64,6 @@
     <canvas id="canvas" width="640" height="480"></canvas>
 </div>
 
-<!-- Print Target -->
 <div id="print-page">
     <div id="print-target"><canvas id="print-canvas"></canvas></div>
 </div>
@@ -116,16 +114,13 @@ function generateMarker() {
     pCtx.fillStyle = "black";
     pCtx.fillRect(0, 0, totalSize, totalSize);
     
-    // Aruco ID 0
     const grid = [[1,0,1,1],[0,1,0,1],[0,0,1,1],[0,0,1,0]];
     pCtx.fillStyle = "white";
     for(let r=0; r<4; r++) {
         for(let c=0; c<4; c++) {
             if(grid[r][c]) {
-                // 1 cell margin each side
                 const x = Math.floor(cellSize + c * cellSize);
                 const y = Math.floor(cellSize + r * cellSize);
-
                 pCtx.fillRect(x, y, cellSize, cellSize);
             }
         }
@@ -138,6 +133,7 @@ generateMarker(); // Init
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
 let detector = new window.AR.Detector();
 let posit = null;
 let lastValidCameraWorld = null;
@@ -156,9 +152,37 @@ document.getElementById('btn-cam').addEventListener('click', async () => {
 });
 
 function processVideo() {
+    // Overwrite the canvas with the current video frame
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Detect markers
     let markers = detector.detect(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    
     if (markers.length > 0) {
+        
+        // --- NEW: Draw Visual Overlay ---
+        ctx.lineWidth = 3;
+        for (let i = 0; i < markers.length; i++) {
+            let corners = markers[i].corners;
+            
+            // Draw green bounding box
+            ctx.strokeStyle = "lime";
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Draw ID in red above the marker
+            ctx.fillStyle = "red";
+            ctx.font = "bold 16px monospace";
+            ctx.fillText("ID: " + markers[i].id, corners[0].x, corners[0].y - 8);
+        }
+        // --------------------------------
+
+        // Pose Estimation Math
         let size = parseFloat(document.getElementById('ui-size').value);
         let fov = parseFloat(document.getElementById('ui-fov').value) * Math.PI / 180;
         let focal = (canvas.width / 2) / Math.tan(fov / 2);
@@ -168,26 +192,45 @@ function processVideo() {
         let corners = markers[0].corners.map(c => ({ x: c.x - canvas.width/2, y: canvas.height/2 - c.y }));
         let pose = posit.pose(corners);
         
-        let T_C = new THREE.Matrix4().set(
-            pose.bestRotation[0][0], pose.bestRotation[0][1], -pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
-            pose.bestRotation[1][0], pose.bestRotation[1][1], -pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
-            -pose.bestRotation[2][0], -pose.bestRotation[2][1], pose.bestRotation[2][2], -pose.bestTranslation[2]/1000,
-            0,0,0,1
-        );
+        if (renderer.xr.isPresenting) {
+            let T_C = new THREE.Matrix4().set(
+                pose.bestRotation[0][0], pose.bestRotation[0][1], -pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
+                pose.bestRotation[1][0], pose.bestRotation[1][1], -pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
+                -pose.bestRotation[2][0], -pose.bestRotation[2][1], pose.bestRotation[2][2], -pose.bestTranslation[2]/1000,
+                0,0,0,1
+            );
 
-        let H_W = renderer.xr.isPresenting ? renderer.xr.getCamera(camera).matrixWorld : new THREE.Matrix4().makeTranslation(0,1.6,0);
-        let M_W = new THREE.Matrix4().multiplyMatrices(H_W, new THREE.Matrix4().makeTranslation(0,0, parseFloat(document.getElementById('ui-zoffset').value)));
-        
-        let C_W = new THREE.Matrix4().multiplyMatrices(M_W, new THREE.Matrix4().copy(T_C).invert());
-        camGroup.matrix.copy(C_W);
-        lastValidCameraWorld = C_W.clone();
+            // Pull the REAL headset matrix
+            let H_W = renderer.xr.getCamera(camera).matrixWorld; 
+            
+            // Apply your Z-offset
+            let M_W = new THREE.Matrix4().multiplyMatrices(H_W, new THREE.Matrix4().makeTranslation(0,0, parseFloat(document.getElementById('ui-zoffset').value)));
+            
+            // Calculate final camera position
+            let C_W = new THREE.Matrix4().multiplyMatrices(M_W, new THREE.Matrix4().copy(T_C).invert());
+            camGroup.matrix.copy(C_W);
+            
+            // Save the valid data for capture
+            lastValidCameraWorld = C_W.clone();
+        } else {
+            // If the headset gets taken off, clear out the stale data so we don't accidentally capture it later
+            lastValidCameraWorld = null; 
+        }
     }
     requestAnimationFrame(processVideo);
 }
 
 // --- Export ---
 function capture() {
-    if(!lastValidCameraWorld) return alert("Marker not found!");
+    if (!renderer.xr.isPresenting) {
+        return alert("❌ Calibration Blocked: You must put on the headset and enter VR/AR mode before capturing!");
+    }
+
+    // 2. Existing Safety Check: Is the marker visible?
+    if (!lastValidCameraWorld) {
+        return alert("❌ Marker not found! Ensure the marker is clearly visible to the webcam.");
+    }
+
     let pos = new THREE.Vector3().setFromMatrixPosition(lastValidCameraWorld);
     let rot = new THREE.Euler().setFromRotationMatrix(lastValidCameraWorld, 'XYZ');
     document.getElementById('output-cfg').value = `x=${pos.x.toFixed(6)}\ny=${pos.y.toFixed(6)}\nz=${pos.z.toFixed(6)}\n` +
