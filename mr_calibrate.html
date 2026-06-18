@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebXR MR Camera Calibrator</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
+        #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 8px; width: 340px; max-height: 95vh; overflow-y: auto;}
+        #video-container { position: absolute; top: 10px; right: 10px; z-index: 10; border: 2px solid #444; border-radius: 8px; background: #000; box-shadow: 0 0 10px rgba(0,255,0,0.2);}
+        canvas, video { display: block; }
+        video { display: none; } 
+        input { width: 60px; background: #333; color: #fff; border: 1px solid #666; padding: 4px; border-radius: 4px; float: right;}
+        label { display: block; margin-bottom: 10px; line-height: 24px; border-bottom: 1px solid #333; padding-bottom: 5px;}
+        button { background: #007bff; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; font-size: 14px;}
+        button:hover { background: #0056b3; }
+        .btn-success { background: #28a745; }
+        .btn-print { background: #17a2b8; }
+        textarea { background: #222; color: #0f0; border: 1px solid #444; font-family: monospace; padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box; resize: none; font-size: 12px;}
+        .note { font-size: 11px; color: #aaa; margin-top: 2px; margin-bottom: 5px; display: block; line-height: 1.4;}
+        hr { border: 0; border-top: 1px solid #444; margin: 15px 0;}
+
+        /* Print Layout */
+        #print-page { display: none; }
+        @media print {
+            body * { visibility: hidden; }
+            #print-page, #print-page * { visibility: visible; }
+            #print-page { display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+            #print-target { display: flex; justify-content: center; align-items: center; height: 100%; }
+        }
+    </style>
+    
+    <!-- Dependencies -->
+    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/cv.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/aruco.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/svd.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/posit1.js"></script>
+</head>
+<body>
+
+<div id="ui-container">
+    <h2 style="margin-top:0; color: #66f;">MR Camera Calibrator</h2>
+    
+    <h3>1. Prepare Marker</h3>
+    <label>Size (mm) <input id="print-size-mm" type="number" value="50" min="10" max="200"></label>
+    <button class="btn-print" onclick="window.print()">Print Marker</button>
+    <span class="note">Note: Turn off "Fit to Page" in print dialog.</span>
+    
+    <hr>
+    
+    <h3>2. Calibrate</h3>
+    <label>Size (mm) <input id="ui-size" type="number" value="50"></label>
+    <label>Z Offset (m) <input id="ui-zoffset" type="number" step="0.01" value="-0.10"></label>
+    <label>FOV (deg) <input id="ui-fov" type="number" value="60"></label>
+    
+    <button id="btn-cam">Start Webcam (Lock Focus)</button>
+    <div id="vr-container"></div>
+    <button class="btn-success" id="btn-capture">Capture (Spacebar)</button>
+    
+    <h3 style="margin-top: 15px;">Output (externalcamera.cfg)</h3>
+    <textarea id="output-cfg" rows="10" readonly></textarea>
+</div>
+
+<div id="video-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+</div>
+
+<!-- Print Target -->
+<div id="print-page">
+    <div id="print-target"><canvas id="print-canvas"></canvas></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.150.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+// --- Scene Setup ---
+const scene = new THREE.Scene();
+scene.add(new THREE.GridHelper(10, 10));
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+document.body.appendChild(renderer.domElement);
+document.getElementById('vr-container').appendChild(VRButton.createButton(renderer));
+
+const camGroup = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.05), new THREE.MeshNormalMaterial());
+camGroup.add(body);
+camGroup.matrixAutoUpdate = false;
+scene.add(camGroup);
+
+// --- Print System ---
+function generateMarker() {
+    const pCanvas = document.getElementById('print-canvas');
+    const pCtx = pCanvas.getContext('2d');
+    const sizeMM = parseFloat(document.getElementById('print-size-mm').value);
+    const pixelSize = (sizeMM / 25.4) * 96; 
+    const cellSize = pixelSize / 4;
+    // 1 cell margin each side
+    const totalSize = pixelSize + (cellSize * 2);
+
+    pCanvas.width = totalSize;
+    pCanvas.height = totalSize;
+    pCtx.fillStyle = "black";
+    pCtx.fillRect(0, 0, totalSize, totalSize);
+    
+    // Aruco ID 0
+    const grid = [[1,0,1,1],[0,1,0,1],[0,0,1,1],[0,0,1,0]];
+    pCtx.fillStyle = "white";
+    for(let r=0; r<4; r++) {
+        for(let c=0; c<4; c++) {
+            if(grid[r][c]) {
+                // 1 cell margin each side
+                const x = Math.floor(cellSize + c * cellSize);
+                const y = Math.floor(cellSize + r * cellSize);
+
+                pCtx.fillRect(x, y, cellSize, cellSize);
+            }
+        }
+    }
+}
+document.getElementById('print-size-mm').onchange = generateMarker;
+generateMarker(); // Init
+
+// --- Camera Logic ---
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+let detector = new window.AR.Detector();
+let posit = null;
+let lastValidCameraWorld = null;
+
+document.getElementById('btn-cam').addEventListener('click', async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1920, height: 1080 } });
+        const track = stream.getVideoTracks()[0];
+        // Request Manual Focus
+        if (track.getCapabilities().focusMode) {
+            await track.applyConstraints({ advanced: [{ focusMode: "manual", exposureMode: "manual" }] });
+        }
+        video.srcObject = stream;
+        requestAnimationFrame(processVideo);
+    } catch(e) { alert("Camera Error: " + e); }
+});
+
+function processVideo() {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    let markers = detector.detect(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    if (markers.length > 0) {
+        let size = parseFloat(document.getElementById('ui-size').value);
+        let fov = parseFloat(document.getElementById('ui-fov').value) * Math.PI / 180;
+        let focal = (canvas.width / 2) / Math.tan(fov / 2);
+        
+        if(!posit) posit = new POS.Posit(size, focal);
+        
+        let corners = markers[0].corners.map(c => ({ x: c.x - canvas.width/2, y: canvas.height/2 - c.y }));
+        let pose = posit.pose(corners);
+        
+        let T_C = new THREE.Matrix4().set(
+            pose.bestRotation[0][0], pose.bestRotation[0][1], -pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
+            pose.bestRotation[1][0], pose.bestRotation[1][1], -pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
+            -pose.bestRotation[2][0], -pose.bestRotation[2][1], pose.bestRotation[2][2], -pose.bestTranslation[2]/1000,
+            0,0,0,1
+        );
+
+        let H_W = renderer.xr.isPresenting ? renderer.xr.getCamera(camera).matrixWorld : new THREE.Matrix4().makeTranslation(0,1.6,0);
+        let M_W = new THREE.Matrix4().multiplyMatrices(H_W, new THREE.Matrix4().makeTranslation(0,0, parseFloat(document.getElementById('ui-zoffset').value)));
+        
+        let C_W = new THREE.Matrix4().multiplyMatrices(M_W, new THREE.Matrix4().copy(T_C).invert());
+        camGroup.matrix.copy(C_W);
+        lastValidCameraWorld = C_W.clone();
+    }
+    requestAnimationFrame(processVideo);
+}
+
+// --- Export ---
+function capture() {
+    if(!lastValidCameraWorld) return alert("Marker not found!");
+    let pos = new THREE.Vector3().setFromMatrixPosition(lastValidCameraWorld);
+    let rot = new THREE.Euler().setFromRotationMatrix(lastValidCameraWorld, 'XYZ');
+    document.getElementById('output-cfg').value = `x=${pos.x.toFixed(6)}\ny=${pos.y.toFixed(6)}\nz=${pos.z.toFixed(6)}\n` +
+        `rx=${(rot.x * 180/Math.PI).toFixed(6)}\nry=${(rot.y * 180/Math.PI).toFixed(6)}\nrz=${(rot.z * 180/Math.PI).toFixed(6)}\n` +
+        `fov=${document.getElementById('ui-fov').value}\nnear=0.1\nfar=100\nsceneResolutionScale=0.5`;
+}
+document.getElementById('btn-capture').onclick = capture;
+window.onkeydown = (e) => { if(e.code === 'Space') capture(); };
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+</script>
+</body>
+</html>
