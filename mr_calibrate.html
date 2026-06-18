@@ -7,9 +7,9 @@
         body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
         #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 8px; width: 340px; max-height: 95vh; overflow-y: auto;}
         #video-container { position: absolute; top: 10px; right: 10px; z-index: 10; border: 2px solid #444; border-radius: 8px; background: #000; box-shadow: 0 0 10px rgba(0,255,0,0.2);}
-        canvas, video { display: block; }
+        canvas, video { display: block; width:20vw }
         video { display: none; } 
-        input { width: 60px; background: #333; color: #fff; border: 1px solid #666; padding: 4px; border-radius: 4px; float: right;}
+        input[type="number"] { width: 60px; background: #333; color: #fff; border: 1px solid #666; padding: 4px; border-radius: 4px; float: right;}
         label { display: block; margin-bottom: 10px; line-height: 24px; border-bottom: 1px solid #333; padding-bottom: 5px;}
         button { background: #007bff; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; font-size: 14px;}
         button:hover { background: #0056b3; }
@@ -18,6 +18,8 @@
         textarea { background: #222; color: #0f0; border: 1px solid #444; font-family: monospace; padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box; resize: none; font-size: 12px;}
         .note { font-size: 11px; color: #aaa; margin-top: 2px; margin-bottom: 5px; display: block; line-height: 1.4;}
         hr { border: 0; border-top: 1px solid #444; margin: 15px 0;}
+        .toggles { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 10px; }
+        .toggles label { border: none; padding: 0; margin: 0; display: inline-flex; align-items: center; }
 
         /* Print Layout */
         #print-page { display: none; }
@@ -51,7 +53,16 @@
     <label>Z Offset (m) <input id="ui-zoffset" type="number" step="0.01" value="-0.10"></label>
     <label>FOV (deg) <input id="ui-fov" type="number" value="60"></label>
     
-    <button id="btn-cam">Start Webcam</button>
+    <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+        <span style="font-size: 12px; color:#aaa; margin-bottom: 5px; display:block;">If camera is behind you, click these to fix:</span>
+        <div class="toggles">
+            <label><input type="checkbox" id="flip-x"> Flip X</label>
+            <label><input type="checkbox" id="flip-y"> Flip Y</label>
+            <label><input type="checkbox" id="flip-z"> Flip Z</label>
+        </div>
+    </div>
+    
+    <button id="btn-cam">Start Webcam (Lock Focus)</button>
     <div id="vr-container"></div>
     <button class="btn-success" id="btn-capture">Capture (Spacebar)</button>
     
@@ -61,7 +72,7 @@
 
 <div id="video-container">
     <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
+    <canvas id="canvas" width="1920" height="1080"></canvas>
 </div>
 
 <div id="print-page">
@@ -93,11 +104,38 @@ renderer.xr.setReferenceSpaceType('local-floor');
 document.body.appendChild(renderer.domElement);
 document.getElementById('vr-container').appendChild(VRButton.createButton(renderer));
 
+// --- THE NEW 3D OBJECT HIERARCHY ---
+const headsetNode = new THREE.Group(); 
+scene.add(headsetNode); // Node 1: Matches Headset
+
+const markerNode = new THREE.Group();
+headsetNode.add(markerNode); // Node 2: Attached to Headset (handles Z-offset and Flips)
+
+const cvSpace = new THREE.Group();
+cvSpace.rotation.x = Math.PI; // Converts OpenCV (Y-down, Z-forward) to WebGL (Y-up, Z-back)
+markerNode.add(cvSpace); // Node 3: The Math Converter
+
 const camGroup = new THREE.Group();
-const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.05), new THREE.MeshNormalMaterial());
-camGroup.add(body);
-camGroup.matrixAutoUpdate = false;
-scene.add(camGroup);
+cvSpace.add(camGroup); // Node 4: The final calculated camera position
+
+// Visuals for the Camera
+camGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true })));
+camGroup.add(new THREE.AxesHelper(0.5));
+
+// Laser Line
+const laserLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)]), 
+    new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 })
+);
+scene.add(laserLine);
+
+// Virtual TV Screen
+const videoElement = document.getElementById('video');
+const videoTex = new THREE.VideoTexture(videoElement);
+videoTex.colorSpace = THREE.SRGBColorSpace;
+const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.36), new THREE.MeshBasicMaterial({ map: videoTex, side: THREE.DoubleSide }));
+screenMesh.position.set(0, 1.5, -1.5); // Floating in middle of room
+scene.add(screenMesh);
 
 // --- Print System ---
 function generateMarker() {
@@ -106,7 +144,6 @@ function generateMarker() {
     const sizeMM = parseFloat(document.getElementById('print-size-mm').value);
     const pixelSize = (sizeMM / 25.4) * 96; 
     const cellSize = pixelSize / 4;
-    // 1 cell margin each side
     const totalSize = pixelSize + (cellSize * 2);
 
     pCanvas.width = totalSize;
@@ -127,7 +164,7 @@ function generateMarker() {
     }
 }
 document.getElementById('print-size-mm').onchange = generateMarker;
-generateMarker(); // Init
+generateMarker();
 
 // --- Camera Logic ---
 const video = document.getElementById('video');
@@ -136,13 +173,12 @@ const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
 let detector = new window.AR.Detector();
 let posit = null;
-let lastValidCameraWorld = null;
+let latestMarkers = []; // NEW: Store the current frame's markers for the capture button
 
 document.getElementById('btn-cam').addEventListener('click', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1920, height: 1080 } });
         const track = stream.getVideoTracks()[0];
-        // Request Manual Focus
         if (track.getCapabilities().focusMode) {
             await track.applyConstraints({ advanced: [{ focusMode: "manual", exposureMode: "manual" }] });
         }
@@ -152,91 +188,87 @@ document.getElementById('btn-cam').addEventListener('click', async () => {
 });
 
 function processVideo() {
-    // Overwrite the canvas with the current video frame
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Detect markers
-    let markers = detector.detect(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    // Save the detected markers globally so the capture button can use them
+    latestMarkers = detector.detect(ctx.getImageData(0, 0, canvas.width, canvas.height));
     
-    if (markers.length > 0) {
-        
-        // --- NEW: Draw Visual Overlay ---
+    // ONLY do 2D drawing here so you have visual feedback on the monitor
+    if (latestMarkers.length > 0) {
         ctx.lineWidth = 3;
-        for (let i = 0; i < markers.length; i++) {
-            let corners = markers[i].corners;
-            
-            // Draw green bounding box
+        for (let i = 0; i < latestMarkers.length; i++) {
+            let corners = latestMarkers[i].corners;
             ctx.strokeStyle = "lime";
             ctx.beginPath();
-            ctx.moveTo(corners[0].x, corners[0].y);
-            ctx.lineTo(corners[1].x, corners[1].y);
-            ctx.lineTo(corners[2].x, corners[2].y);
-            ctx.lineTo(corners[3].x, corners[3].y);
-            ctx.closePath();
-            ctx.stroke();
-            
-            // Draw ID in red above the marker
+            ctx.moveTo(corners[0].x, corners[0].y); ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y); ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath(); ctx.stroke();
             ctx.fillStyle = "red";
             ctx.font = "bold 16px monospace";
-            ctx.fillText("ID: " + markers[i].id, corners[0].x, corners[0].y - 8);
-        }
-        // --------------------------------
-
-        // Pose Estimation Math
-        let size = parseFloat(document.getElementById('ui-size').value);
-        let fov = parseFloat(document.getElementById('ui-fov').value) * Math.PI / 180;
-        let focal = (canvas.width / 2) / Math.tan(fov / 2);
-        
-        if(!posit) posit = new POS.Posit(size, focal);
-        
-        let corners = markers[0].corners.map(c => ({ x: c.x - canvas.width/2, y: canvas.height/2 - c.y }));
-        let pose = posit.pose(corners);
-        
-        if (renderer.xr.isPresenting) {
-            let T_C = new THREE.Matrix4().set(
-                pose.bestRotation[0][0], pose.bestRotation[0][1], -pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
-                pose.bestRotation[1][0], pose.bestRotation[1][1], -pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
-                -pose.bestRotation[2][0], -pose.bestRotation[2][1], pose.bestRotation[2][2], -pose.bestTranslation[2]/1000,
-                0,0,0,1
-            );
-
-            // Pull the REAL headset matrix
-            let H_W = renderer.xr.getCamera(camera).matrixWorld; 
-            
-            // Apply your Z-offset
-            let M_W = new THREE.Matrix4().multiplyMatrices(H_W, new THREE.Matrix4().makeTranslation(0,0, parseFloat(document.getElementById('ui-zoffset').value)));
-            
-            // Calculate final camera position
-            let C_W = new THREE.Matrix4().multiplyMatrices(M_W, new THREE.Matrix4().copy(T_C).invert());
-            camGroup.matrix.copy(C_W);
-            
-            // Save the valid data for capture
-            lastValidCameraWorld = C_W.clone();
-        } else {
-            // If the headset gets taken off, clear out the stale data so we don't accidentally capture it later
-            lastValidCameraWorld = null; 
+            ctx.fillText("ID: " + latestMarkers[i].id, corners[0].x, corners[0].y - 8);
         }
     }
     requestAnimationFrame(processVideo);
 }
 
-// --- Export ---
+// --- Export & 3D Math ---
 function capture() {
-    if (!renderer.xr.isPresenting) {
-        return alert("❌ Calibration Blocked: You must put on the headset and enter VR/AR mode before capturing!");
-    }
+    // Safety Checks
+    if (!renderer.xr.isPresenting) return alert("❌ Calibration Blocked: Put on the headset and enter VR mode!");
+    if (latestMarkers.length === 0) return alert("❌ Marker not found right now! Make sure you are facing the camera.");
+    
+    // 1. Setup OpenCV Math
+    let size = parseFloat(document.getElementById('ui-size').value);
+    let fov = parseFloat(document.getElementById('ui-fov').value) * Math.PI / 180;
+    let focal = (canvas.width / 2) / Math.tan(fov / 2);
+    
+    if(!posit) posit = new POS.Posit(size, focal);
+    
+    let corners = latestMarkers[0].corners.map(c => ({ x: c.x - canvas.width/2, y: canvas.height/2 - c.y }));
+    let pose = posit.pose(corners);
+    
+    // 2. Lock the root node to your Headset's EXACT current position
+    let hMatrix = renderer.xr.getCamera(camera).matrixWorld;
+    hMatrix.decompose(headsetNode.position, headsetNode.quaternion, headsetNode.scale);
 
-    // 2. Existing Safety Check: Is the marker visible?
-    if (!lastValidCameraWorld) {
-        return alert("❌ Marker not found! Ensure the marker is clearly visible to the webcam.");
-    }
+    // 3. Apply Z-Offset and UI Axis Flips to the Marker Node
+    markerNode.position.z = parseFloat(document.getElementById('ui-zoffset').value);
+    markerNode.rotation.set(
+        document.getElementById('flip-x').checked ? Math.PI : 0,
+        document.getElementById('flip-y').checked ? Math.PI : 0,
+        document.getElementById('flip-z').checked ? Math.PI : 0
+    );
 
-    let pos = new THREE.Vector3().setFromMatrixPosition(lastValidCameraWorld);
-    let rot = new THREE.Euler().setFromRotationMatrix(lastValidCameraWorld, 'XYZ');
+    // 4. Apply the raw Posit Matrix to the Camera
+    let positMatrix = new THREE.Matrix4().set(
+        pose.bestRotation[0][0], pose.bestRotation[0][1], pose.bestRotation[0][2], pose.bestTranslation[0]/1000,
+        pose.bestRotation[1][0], pose.bestRotation[1][1], pose.bestRotation[1][2], pose.bestTranslation[1]/1000,
+        pose.bestRotation[2][0], pose.bestRotation[2][1], pose.bestRotation[2][2], pose.bestTranslation[2]/1000,
+        0,0,0,1
+    );
+    
+    // Posit calculates Marker -> Camera. We invert it to position Camera -> Marker.
+    positMatrix.invert().decompose(camGroup.position, camGroup.quaternion, camGroup.scale);
+
+    // Force Three.js to calculate the final World Matrices instantly
+    scene.updateMatrixWorld(true);
+
+    // 5. Update the Laser Line so you can see where it locked in
+    let headPos = new THREE.Vector3().setFromMatrixPosition(headsetNode.matrixWorld);
+    let camPos = new THREE.Vector3().setFromMatrixPosition(camGroup.matrixWorld);
+    laserLine.geometry.setFromPoints([headPos, camPos]);
+    
+    // 6. Generate the Output text
+    let pos = new THREE.Vector3().setFromMatrixPosition(camGroup.matrixWorld);
+    let rot = new THREE.Euler().setFromRotationMatrix(camGroup.matrixWorld, 'XYZ');
+    
     document.getElementById('output-cfg').value = `x=${pos.x.toFixed(6)}\ny=${pos.y.toFixed(6)}\nz=${pos.z.toFixed(6)}\n` +
         `rx=${(rot.x * 180/Math.PI).toFixed(6)}\nry=${(rot.y * 180/Math.PI).toFixed(6)}\nrz=${(rot.z * 180/Math.PI).toFixed(6)}\n` +
         `fov=${document.getElementById('ui-fov').value}\nnear=0.1\nfar=100\nsceneResolutionScale=0.5`;
+
+    console.log("Calibration Locked!");
 }
+
 document.getElementById('btn-capture').onclick = capture;
 window.onkeydown = (e) => { if(e.code === 'Space') capture(); };
 renderer.setAnimationLoop(() => renderer.render(scene, camera));
